@@ -1,10 +1,16 @@
 import { useMemo, useRef, useState } from "react";
 
-const DEFAULT_API = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
-const LOGO_URL = import.meta.env.VITE_LOGO_URL || ""; // optional: direct Katrum logo URL
+// Optional logo (direct URL). If you don't want an env, just hardcode a URL or leave empty.
+const LOGO_URL = import.meta.env.VITE_LOGO_URL || "";
 
+/**
+ * This version uses RELATIVE API paths:
+ *   - /api/ask
+ *   - /healthz
+ * In dev: configure Vite proxy in vite.config.js
+ * In prod (Vercel): add rewrites in vercel.json to your backend.
+ */
 export default function App() {
-  const [apiBase, setApiBase] = useState(DEFAULT_API);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [cites, setCites] = useState([]);
@@ -34,7 +40,8 @@ export default function App() {
     setCites([]);
     setElapsed(null);
 
-    const url = new URL(`${apiBase}/api/ask`);
+    // Build a SAME-ORIGIN URL to /api/ask
+    const url = new URL("/api/ask", window.location.origin);
     url.searchParams.set("question", question);
     url.searchParams.set("chat_model", chatModel);
     url.searchParams.set("embed_model", embedModel);
@@ -79,7 +86,7 @@ export default function App() {
       setLoading(false);
       es.close();
       esRef.current = null;
-      setErrors("Connection error. Check API base and server logs.");
+      setErrors("Connection error. Check API and rewrites/proxy.");
     };
   };
 
@@ -135,13 +142,6 @@ export default function App() {
               <div className="panel-title">Settings</div>
               <div className="form">
                 <label>
-                  <span>API Base</span>
-                  <input
-                    value={apiBase}
-                    onChange={(e) => setApiBase(e.target.value)}
-                  />
-                </label>
-                <label>
                   <span>Chat Model</span>
                   <input
                     value={chatModel}
@@ -155,12 +155,9 @@ export default function App() {
                     onChange={(e) => setEmbedModel(e.target.value)}
                   />
                 </label>
-                <a
-                  className="btn-ghost"
-                  href={`${apiBase}/healthz`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+
+                {/* Relative health check */}
+                <a className="btn-ghost" href="/healthz" target="_blank" rel="noreferrer">
                   Health check
                 </a>
               </div>
@@ -233,4 +230,5 @@ export default function App() {
     </div>
   );
 }
+
 
