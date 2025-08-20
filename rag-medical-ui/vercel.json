@@ -1,7 +1,7 @@
 {
     "rewrites": [
-      { "source": "/api/(.*)", "destination": "https://YOUR-BACKEND-DOMAIN/api/$1" },
-      { "source": "/healthz", "destination": "https://YOUR-BACKEND-DOMAIN/healthz" }
+      { "source": "/api/(.*)", "destination": "https://katrum-medbot.onrender.com/api/$1" },
+      { "source": "/healthz", "destination": "https://katrum-medbot.onrender.com/healthz" }
     ],
     "cleanUrls": true
   }
