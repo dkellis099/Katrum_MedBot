@@ -2,12 +2,11 @@ import os
 import json
 import time
 import requests
-import psycopg2
-from typing import List, Dict, Optional
+import psycopg
+from psycopg.rows import dict_row
+from typing import List, Dict
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from psycopg2.extras import RealDictCursor
 from starlette.responses import StreamingResponse, JSONResponse, PlainTextResponse
 
 # --- Config (env-first, with sane defaults matching your CLI) ---
@@ -16,20 +15,20 @@ PG_USER = os.getenv("PG_USER", "dylan25")
 PG_DB   = os.getenv("PG_DB",   "medical_db")
 PG_PASS = os.getenv("PG_PASS",  "")
 
-OLLAMA_HOST   = os.getenv("OLLAMA_HOST", "3.135.119.211")
-OLLAMA_PORT   = int(os.getenv("OLLAMA_PORT", "11434"))
-EMBED_MODEL   = os.getenv("EMBED_MODEL", "nomic-embed-text")
-CHAT_MODEL    = os.getenv("CHAT_MODEL",  "llama2")
-IVFFLAT_PROBES = os.getenv("IVFFLAT_PROBES")  # e.g., "10"
+OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "3.135.119.211")
+OLLAMA_PORT     = int(os.getenv("OLLAMA_PORT", "11434"))
+EMBED_MODEL     = os.getenv("EMBED_MODEL", "nomic-embed-text")
+CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama2")
+IVFFLAT_PROBES  = os.getenv("IVFFLAT_PROBES")  # e.g., "10"
 
-DEFAULT_TOP_K = int(os.getenv("TOP_K", "5"))
-MAX_CONTEXT   = int(os.getenv("MAX_CONTEXT", "8000"))
+DEFAULT_TOP_K   = int(os.getenv("TOP_K", "5"))
+MAX_CONTEXT     = int(os.getenv("MAX_CONTEXT", "8000"))
 
 # --- FastAPI app & CORS ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in prod
+    allow_origins=["*"],   # tighten in prod
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -38,10 +37,16 @@ app.add_middleware(
 _conn = None
 
 def get_conn():
+    """Singleton psycopg3 connection with optional ivfflat probes setting."""
     global _conn
     if _conn is None or _conn.closed:
-        _conn = psycopg2.connect(host=PG_HOST, user=PG_USER, dbname=PG_DB, password=PG_PASS)
-        _conn.autocommit = True
+        _conn = psycopg.connect(
+            host=PG_HOST,
+            user=PG_USER,
+            dbname=PG_DB,
+            password=PG_PASS,
+            autocommit=True,
+        )
         if IVFFLAT_PROBES:
             try:
                 with _conn.cursor() as cur:
@@ -54,9 +59,6 @@ def get_conn():
 
 def ollama_url(path: str) -> str:
     return f"http://{OLLAMA_HOST}:{OLLAMA_PORT}{path}"
-
-EMBED_MODEL   = os.getenv("EMBED_MODEL", "nomic-embed-text")
-CHAT_MODEL    = os.getenv("CHAT_MODEL",  "llama2")
 
 def embed_query(text: str, model: str) -> List[float]:
     payload = {"model": model, "prompt": text}
@@ -72,23 +74,23 @@ def to_vector_literal(vec: List[float]) -> str:
     # pgvector expects like '[0.12,-0.34,...]'
     return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
-
 def retrieve_chunks(query_vec: List[float], k: int) -> List[Dict]:
     conn = get_conn()
     vec_lit = to_vector_literal(query_vec)
-    sql = (
-        """
-        SELECT book_id, chunk_id, content,
-               (1.0 - (embeddings <=> %s::vector)) AS cosine_sim
+    sql = """
+        SELECT
+            book_id,
+            chunk_id,
+            content,
+            (1.0 - (embeddings <=> %s::vector)) AS cosine_sim
         FROM book_vector
         ORDER BY embeddings <=> %s::vector
         LIMIT %s;
-        """
-    )
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+    """
+    # psycopg3: use row_factory=dict_row to get dict-like rows
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(sql, (vec_lit, vec_lit, k))
         return cur.fetchall()
-
 
 def build_context(snippets: List[Dict], max_chars: int):
     parts, cites = [], []
@@ -105,18 +107,15 @@ def build_context(snippets: List[Dict], max_chars: int):
             break
     return "\n\n".join(parts), cites
 
-
 SYSTEM_INSTRUCTIONS = (
     "You are a careful medical assistant. Answer ONLY using the provided context from medical books. "
     "If the answer is not present or is uncertain, say you don't know based on the provided sources. "
     "Keep the explanation very concise."
 )
 
-
 def sse_format(event: str, data: str) -> str:
     # Basic Server-Sent Event line formatting
     return f"event: {event}\ndata: {data}\n\n"
-
 
 @app.get("/healthz")
 def healthz():
@@ -126,11 +125,10 @@ def healthz():
     except Exception as e:
         return PlainTextResponse(f"unhealthy: {e}", status_code=500)
 
-
 @app.get("/api/source")
 def get_source(book_id: str = Query(...), chunk_id: int = Query(...)):
     conn = get_conn()
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+    with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT book_id, chunk_id, content FROM book_vector WHERE book_id = %s AND chunk_id = %s;",
             (book_id, chunk_id),
@@ -146,7 +144,6 @@ def get_source(book_id: str = Query(...), chunk_id: int = Query(...)):
         neighbors = cur.fetchall()
         return JSONResponse({"book_id": book_id, "focus": row, "neighbors": neighbors})
 
-
 @app.get("/api/ask")
 def ask(
     question: str = Query(..., min_length=1, max_length=2000),
@@ -157,7 +154,6 @@ def ask(
 ):
     """SSE stream using GET query params (so the frontend can use EventSource)."""
 
-    # Use local variables; don't mutate module-level defaults
     model_chat = chat_model or CHAT_MODEL
     model_embed = embed_model or EMBED_MODEL
 
@@ -203,35 +199,23 @@ Answer the user’s question using only the context above.
                 timeout=300,
             ) as r:
                 r.raise_for_status()
-                # Use default iter_lines() (bytes) and decode explicitly to avoid type issues
                 for raw in r.iter_lines():
                     if not raw:
                         continue
-
-                    # Normalize to str
-                    if isinstance(raw, (bytes, bytearray)):
-                        line = raw.decode("utf-8", errors="ignore")
-                    else:
-                        line = str(raw)
-
-                    # Some builds prefix with "data: "
+                    # Normalize to text
+                    line = raw.decode("utf-8", errors="ignore") if isinstance(raw, (bytes, bytearray)) else str(raw)
                     if line.startswith("data: "):
                         line = line[6:]
-
-                    # Each line should be a JSON object from Ollama
                     try:
                         obj = json.loads(line)
                     except json.JSONDecodeError:
-                        # Ignore keep-alives or non-JSON noise
                         continue
-
                     token = obj.get("response")
                     if token:
                         sent_any = True
                         yield sse_format("token", json.dumps(token))
                     if obj.get("done"):
                         break
-
 
             # 6) Fallback to non-streaming if nothing was sent
             if not sent_any:
@@ -259,11 +243,9 @@ Answer the user’s question using only the context above.
             )
 
         except Exception as e:
-            # Surface errors to the client
             yield sse_format("token", json.dumps(f"[error] {e}"))
             yield sse_format("done", json.dumps({"cites": [], "elapsed": round(time.time() - start, 2)}))
 
-    # Important: no-cache helps EventSource
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
