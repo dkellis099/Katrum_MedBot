@@ -1,0 +1,88 @@
+/* If you keep Tailwind, leave its @tailwind lines at the very top */
+
+:root{
+    --blue-dark:#0f3c8a;
+    --blue:#0d59de;
+    --blue-100:#e6f0ff;
+    --blue-50:#eaf2ff;
+    --border:#cfe0ff;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --card:#ffffff;
+  }
+  
+  *{box-sizing:border-box}
+  body,html,#root{height:100%}
+  body{margin:0;color:var(--text);background:var(--blue-50);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+  
+  /* Bootstrap-like structural helpers */
+  .container{max-width:1100px;margin:0 auto;padding:0 16px}
+  .row{display:flex;gap:24px;align-items:flex-start}
+  .gtr-root{min-height:100vh;display:flex;flex-direction:column}
+  
+  /* NAVBAR */
+  .navbar{background:var(--blue-100);border-bottom:1px solid var(--border)}
+  .nav-inner{display:flex;align-items:center;min-height:48px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand-logo{height:28px;width:auto;object-fit:contain}
+  .brand-name{font-weight:700;color:var(--blue-dark);font-size:18px}
+  
+  /* COLUMNS */
+  .col-left{width:280px;flex:0 0 280px;position:sticky;top:16px}
+  .col-main{flex:1;min-width:0}
+  
+  /* TITLES */
+  .page-title{margin:12px 0 8px;font-size:24px;color:var(--blue-dark)}
+  .section-title{margin:8px 0 8px;font-size:18px;color:var(--blue-dark)}
+  
+  /* PANELS (Bootstrap-ish) */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.03);overflow:hidden}
+  .panel-title{background:rgba(255,255,255,.08);color:#fff;font-weight:600;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.15)}
+  /* blue header for panels inside dark rail */
+  .col-left .panel{background:transparent;border-color:rgba(255,255,255,.25)}
+  .col-left .panel-title{background:transparent;border-bottom-color:rgba(255,255,255,.25)}
+  .col-left .panel .form label span{color:#fff}
+  .panel-body{padding:16px}
+  
+  /* LEFT RAIL BACKGROUND */
+  .col-left{background:var(--blue-dark);color:#fff;border-radius:12px;padding:12px}
+  
+  /* ZEBRA TABLE */
+  .table{width:100%;border-collapse:collapse;font-size:14px}
+  .table td{padding:8px 10px}
+  .table.zebra tr:nth-child(odd){background:rgba(255,255,255,.06)}
+  .table .key{opacity:.85}
+  .table .val{text-align:right;font-weight:600}
+  
+  /* FORM inside left rail */
+  .form label{display:block;margin-bottom:10px}
+  .form input{width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#fff;color:#111}
+  .btn-ghost{display:inline-block;margin-top:6px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.12);color:#fff;text-decoration:none}
+  .btn-ghost:hover{background:rgba(255,255,255,.18)}
+  
+  /* ASK / ANSWER */
+  .ask-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);font-size:15px;resize:vertical;background:#fff}
+  .actions{display:flex;gap:10px;margin-top:10px}
+  .btn-primary{background:var(--blue);color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+  .btn-primary:disabled{opacity:.6;cursor:not-allowed}
+  .btn-light{background:#f3f6ff;border:1px solid var(--border);color:var(--blue-dark);border-radius:10px;padding:10px 14px;cursor:pointer}
+  .btn-light:hover{background:#eef3ff}
+  .error{color:#b91c1c;font-size:14px;margin-top:6px}
+  .muted{color:var(--muted)}
+  
+  .answer{min-height:96px;line-height:1.7;font-size:16px;white-space:pre-wrap}
+  .answer.loading{opacity:.8;animation:pulse 1.25s ease-in-out infinite}
+  @keyframes pulse{0%{opacity:.6}50%{opacity:1}100%{opacity:.6}}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{border:1px solid var(--border);background:#f6faff;color:var(--blue-dark);padding:4px 8px;border-radius:999px;font-size:12px}
+  
+  /* FOOTER */
+  .footer{margin-top:auto;border-top:1px solid var(--border);background:#fff}
+  .footer-inner{min-height:52px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:14px}
+  
+  /* Small screens: stack columns */
+  @media (max-width: 900px){
+    .row{flex-direction:column}
+    .col-left{width:100%;position:relative;top:auto}
+  }
+  
