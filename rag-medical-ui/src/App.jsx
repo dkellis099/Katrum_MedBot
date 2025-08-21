@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next"
 import { useMemo, useRef, useState } from "react";
 
 // Optional logo (direct URL). If you don't want an env, just hardcode a URL or leave empty.
