@@ -9,13 +9,18 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse, JSONResponse, PlainTextResponse
 
-# --- Config (env-first, with sane defaults matching your CLI) ---
+# --- Config (env-first, with sane defaults) ---
 PG_HOST = os.getenv("PG_HOST", "5.78.72.110")
 PG_USER = os.getenv("PG_USER", "dylan25")
 PG_DB   = os.getenv("PG_DB",   "medical_db")
 PG_PASS = os.getenv("PG_PASS",  "")
 
-OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "3.135.119.211")
+# You may provide either:
+# 1) OLLAMA_BASE = "http://host:11434"  (preferred)
+# or
+# 2) OLLAMA_HOST = "host" and OLLAMA_PORT = "11434"
+OLLAMA_BASE     = os.getenv("OLLAMA_BASE", "").strip()
+OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "3.135.119.211").strip()
 OLLAMA_PORT     = int(os.getenv("OLLAMA_PORT", "11434"))
 EMBED_MODEL     = os.getenv("EMBED_MODEL", "nomic-embed-text")
 CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama2")
@@ -55,10 +60,33 @@ def get_conn():
                 print(f"[warn] could not set ivfflat.probes: {e}")
     return _conn
 
-# --- Helpers copied from your CLI, slightly adapted ---
+# --- Ollama URL builder (robust) ---
+
+def _normalized_ollama_base() -> str:
+    """
+    Returns a well-formed base like 'http://host:11434'.
+    - If OLLAMA_BASE is set, use it (strip trailing /).
+    - Otherwise, build from OLLAMA_HOST + OLLAMA_PORT, stripping any scheme
+      accidentally included in OLLAMA_HOST.
+    """
+    if OLLAMA_BASE:
+        return OLLAMA_BASE.rstrip("/")
+
+    host = OLLAMA_HOST
+    # strip accidental scheme from OLLAMA_HOST
+    if host.startswith("http://"):
+        host = host[len("http://") :]
+    elif host.startswith("https://"):
+        host = host[len("https://") :]
+
+    return f"http://{host}:{OLLAMA_PORT}"
 
 def ollama_url(path: str) -> str:
-    return f"http://{OLLAMA_HOST}:{OLLAMA_PORT}{path}"
+    # ensure single slash join
+    base = _normalized_ollama_base()
+    return f"{base}{path}"
+
+# --- Embeddings & retrieval helpers ---
 
 def embed_query(text: str, model: str) -> List[float]:
     payload = {"model": model, "prompt": text}
@@ -87,7 +115,6 @@ def retrieve_chunks(query_vec: List[float], k: int) -> List[Dict]:
         ORDER BY embeddings <=> %s::vector
         LIMIT %s;
     """
-    # psycopg3: use row_factory=dict_row to get dict-like rows
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(sql, (vec_lit, vec_lit, k))
         return cur.fetchall()
@@ -117,10 +144,20 @@ def sse_format(event: str, data: str) -> str:
     # Basic Server-Sent Event line formatting
     return f"event: {event}\ndata: {data}\n\n"
 
+# --- Simple root to avoid 404 probes ---
+@app.get("/")
+def root():
+    return PlainTextResponse("ok")
+
 @app.get("/healthz")
 def healthz():
     try:
         get_conn()
+        # also quick Ollama check (optional)
+        try:
+            requests.get(_normalized_ollama_base(), timeout=2)
+        except Exception:
+            pass
         return PlainTextResponse("ok")
     except Exception as e:
         return PlainTextResponse(f"unhealthy: {e}", status_code=500)
@@ -167,7 +204,7 @@ def ask(
             hits = retrieve_chunks(qvec, top_k)
 
             # 3) Build context
-            context, cites = build_context(hits, max_context)
+            context, _cites = build_context(hits, max_context)
 
             if not context:
                 yield sse_format("token", json.dumps("No relevant context found. Try rephrasing."))
